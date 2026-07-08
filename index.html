@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0D0F14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JL Mercadinho">
+<title>JL — Gestão de Mercadinho</title>
+
+<!-- Ícone do app (gerado em SVG, não depende de arquivo externo) -->
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234C8DFF' width='100' height='100' rx='22'/><text x='50' y='68' font-size='46' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>JL</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234C8DFF' width='100' height='100' rx='22'/><text x='50' y='68' font-size='46' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>JL</text></svg>">
+
+<!-- Manifest embutido via data-URI: permite "Adicionar à tela inicial" em modo standalone sem precisar de um arquivo manifest.json separado -->
+<link rel="manifest" id="manifestLink" href="">
+
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['Space Grotesk', 'sans-serif'],
+          body: ['Inter', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  :root{
+    --bg:#0D0F14;
+    --surface:#161A22;
+    --surface-2:#1D222C;
+    --line:#272D3A;
+    --text:#EDEFF2;
+    --muted:#8A93A3;
+    --accent:#4C8DFF;
+    --accent-dim:#2E5CA6;
+    --green:#6EE7C0;
+    --amber:#F2A65A;
+    --red:#E5675B;
+  }
+  *{ -webkit-tap-highlight-color:transparent; box-sizing:border-box; }
+  html,body{ height:100%; margin:0; background:var(--bg); color:var(--text); overflow:hidden; }
+  body{ font-family:'Inter',sans-serif; }
+  #app{ position:fixed; inset:0; display:flex; flex-direction:column; }
+
+  /* ---- utilidades de cor dinâmica (o app troca --accent em runtime) ---- */
+  .bg-accent{ background:var(--accent); }
+  .text-accent{ color:var(--accent); }
+  .border-accent{ border-color:var(--accent); }
+  .bg-surface{ background:var(--surface); }
+  .bg-surface2{ background:var(--surface-2); }
+  .border-line{ border-color:var(--line); }
+  .text-muted{ color:var(--muted); }
+
+  /* multicolor: gradiente animado sutil pra quem escolher o tema "Vibrante" */
+  .accent-multicolor{
+    background:linear-gradient(120deg,#4C8DFF,#8C7CFF,#F2A65A,#6EE7C0,#E5675B,#4C8DFF);
+    background-size:300% 300%;
+    animation:flow 10s ease infinite;
+  }
+  @keyframes flow{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+
+  ::-webkit-scrollbar{ width:0; height:0; }
+
+  .screen{ display:none; }
+  .screen.active{ display:flex; flex-direction:column; height:100%; }
+
+  .safe-top{ padding-top:env(safe-area-inset-top); }
+  .safe-bottom{ padding-bottom:env(safe-area-inset-bottom); }
+
+  .tab-btn{ transition:color .15s, transform .15s; }
+  .tab-btn.active{ color:var(--accent); }
+  .tab-btn:active{ transform:scale(.92); }
+
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.6); opacity:0; pointer-events:none; transition:opacity .2s; z-index:40; }
+  .modal-backdrop.show{ opacity:1; pointer-events:auto; }
+  .modal-sheet{ position:fixed; left:0; right:0; bottom:0; max-height:92vh; background:var(--surface); border-top-left-radius:22px; border-top-right-radius:22px; border:1px solid var(--line); transform:translateY(100%); transition:transform .28s cubic-bezier(.2,.8,.2,1); z-index:41; display:flex; flex-direction:column; }
+  .modal-sheet.show{ transform:translateY(0); }
+
+  .semaforo{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .semaforo.ok{ background:var(--green); box-shadow:0 0 6px var(--green); }
+  .semaforo.aviso{ background:var(--amber); box-shadow:0 0 6px var(--amber); }
+  .semaforo.vencido{ background:var(--red); box-shadow:0 0 6px var(--red); }
+
+  .toast{ position:fixed; left:50%; bottom:96px; transform:translateX(-50%); background:var(--surface-2); border:1px solid var(--line); color:var(--text); padding:10px 16px; border-radius:12px; font-size:12.5px; z-index:60; opacity:0; pointer-events:none; transition:opacity .25s, bottom .25s; }
+  .toast.show{ opacity:1; bottom:112px; }
+
+  .chat-bubble{ max-width:85%; padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; }
+  .chat-bubble.user{ background:var(--accent); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
+  .chat-bubble.ai{ background:var(--surface-2); border:1px solid var(--line); align-self:flex-start; border-bottom-left-radius:4px; }
+
+  #qrReader{ width:100%; }
+  #qrReader video{ border-radius:14px; }
+
+  input[type="date"]::-webkit-calendar-picker-indicator{ filter:invert(1); opacity:.6; }
+
+  .swatch{ width:34px; height:34px; border-radius:50%; border:2px solid transparent; flex-shrink:0; }
+  .swatch.selected{ border-color:#fff; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ TOPBAR ============ -->
+  <div class="safe-top bg-surface border-b border-line flex items-center justify-between px-4 py-3 flex-shrink-0">
+    <div>
+      <div class="font-display font-bold text-lg leading-none">JL <span class="text-muted font-body font-normal text-xs">Mercadinho</span></div>
+    </div>
+    <button id="themeBtn" class="w-9 h-9 rounded-full bg-surface2 border border-line flex items-center justify-center text-base" aria-label="Cores do app">🎨</button>
+  </div>
+
+  <!-- ============ TELAS ============ -->
+  <div class="flex-1 min-h-0 relative">
+
+    <!-- ---------- ESTOQUE ---------- -->
+    <section class="screen active" id="screen-estoque">
+      <div class="px-4 pt-4 pb-2 flex-shrink-0">
+        <input id="buscaInput" placeholder="Buscar produto ou código de barras…" class="w-full bg-surface2 border border-line rounded-xl px-4 py-3 text-sm outline-none" />
+      </div>
+      <div id="listaProdutos" class="flex-1 overflow-y-auto px-4 pb-24 flex flex-col gap-2"></div>
+      <button id="novoProdutoBtn" class="bg-accent absolute right-4 bottom-24 w-14 h-14 rounded-full text-2xl text-white shadow-lg flex items-center justify-center">+</button>
+    </section>
+
+    <!-- ---------- CAIXA ---------- -->
+    <section class="screen" id="screen-caixa">
+      <div class="px-4 pt-4 pb-2 flex-shrink-0 flex gap-2">
+        <button id="escanearCaixaBtn" class="flex-1 bg-accent text-white rounded-xl py-3 text-sm font-semibold flex items-center justify-center gap-2">📷 Escanear código</button>
+        <button id="buscaManualBtn" class="bg-surface2 border border-line rounded-xl px-4 text-sm">🔎</button>
+      </div>
+      <div id="carrinhoLista" class="flex-1 overflow-y-auto px-4 pb-2 flex flex-col gap-2"></div>
+      <div class="flex-shrink-0 bg-surface border-t border-line px-4 pt-3 pb-3 safe-bottom">
+        <div class="flex justify-between items-center mb-3">
+          <span class="text-muted text-sm">Total</span>
+          <span class="font-display font-bold text-2xl" id="totalVenda">R$ 0,00</span>
+        </div>
+        <button id="finalizarVendaBtn" class="bg-accent w-full text-white rounded-xl py-3.5 text-sm font-semibold" disabled>Finalizar venda</button>
+      </div>
+    </section>
+
+    <!-- ---------- CONSULTOR IA ---------- -->
+    <section class="screen" id="screen-ia">
+      <div class="px-4 pt-3 pb-2 flex-shrink-0 flex items-center gap-2">
+        <select id="modelSelect" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-xs outline-none">
+          <option value="onnx-community/Qwen2.5-1.5B-Instruct">Qwen2.5 1.5B — recomendado (equilíbrio)</option>
+          <option value="onnx-community/Qwen2.5-0.5B-Instruct">Qwen2.5 0.5B — mais leve e rápido</option>
+          <option value="onnx-community/Llama-3.2-1B-Instruct">Llama 3.2 1B — alternativa</option>
+        </select>
+        <button id="carregarIaBtn" class="bg-accent text-white rounded-xl px-3 py-2.5 text-xs font-semibold whitespace-nowrap">Carregar IA</button>
+      </div>
+      <div class="px-4 flex-shrink-0" id="iaProgressWrap" style="display:none;">
+        <div class="h-1.5 bg-surface2 rounded-full overflow-hidden mb-1"><div id="iaProgressBar" class="h-full bg-accent" style="width:0%"></div></div>
+        <div class="text-[10.5px] text-muted mb-2" id="iaProgressLabel"></div>
+      </div>
+      <div class="px-4 pb-1 flex-shrink-0 flex items-center gap-2 text-xs">
+        <span class="w-2 h-2 rounded-full bg-surface2 border border-line" id="iaDot"></span>
+        <span class="text-muted" id="iaStatus">IA não carregada — precisa carregar uma vez, depois funciona offline</span>
+      </div>
+      <div id="chatLista" class="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2.5"></div>
+      <div class="flex-shrink-0 bg-surface border-t border-line px-3 pt-2.5 pb-2.5 safe-bottom flex gap-2">
+        <button id="sugestaoAutoBtn" class="bg-surface2 border border-line rounded-xl px-3 text-xs whitespace-nowrap">💡 Sugestão de compra</button>
+        <input id="chatInput" placeholder="Pergunte sobre seu estoque…" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none" />
+        <button id="chatEnviarBtn" class="bg-accent text-white rounded-xl px-4 text-sm font-semibold">➤</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ TAB BAR ============ -->
+  <div class="safe-bottom bg-surface border-t border-line flex-shrink-0 flex">
+    <button class="tab-btn active flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px]" data-screen="estoque">
+      <span class="text-lg">📦</span> Estoque
+    </button>
+    <button class="tab-btn flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px]" data-screen="caixa">
+      <span class="text-lg">🧾</span> Caixa
+    </button>
+    <button class="tab-btn flex-1 flex flex-col items-center gap-1 py-2.5 text-[11px]" data-screen="ia">
+      <span class="text-lg">🤖</span> Consultor IA
+    </button>
+  </div>
+</div>
+
+<!-- ============ MODAL: PRODUTO (novo/editar) ============ -->
+<div class="modal-backdrop" id="backdropProduto"></div>
+<div class="modal-sheet" id="modalProduto">
+  <div class="flex items-center justify-between px-4 py-3 border-b border-line flex-shrink-0">
+    <span class="font-display font-semibold text-base" id="modalProdutoTitulo">Novo produto</span>
+    <button id="fecharModalProduto" class="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center">✕</button>
+  </div>
+  <div class="overflow-y-auto px-4 py-4 flex flex-col gap-3">
+    <div class="flex gap-3 items-start">
+      <div class="flex flex-col items-center gap-1.5 flex-shrink-0">
+        <img id="fotoPreview" class="w-20 h-20 rounded-xl object-cover bg-surface2 border border-line" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231D222C'/></svg>">
+        <label class="text-[10.5px] text-accent underline" for="fotoInput">Tirar/escolher foto</label>
+        <span class="text-[9.5px] text-muted text-center leading-tight">a foto e a leitura da IA ficam só no celular</span>
+        <input type="file" id="fotoInput" accept="image/*" capture="environment" class="hidden">
+      </div>
+      <div class="flex-1 flex flex-col gap-2">
+        <input id="campoNome" placeholder="Nome do produto" class="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none">
+        <div class="flex gap-2">
+          <input id="campoCodigo" placeholder="Código de barras" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none mono">
+          <button id="escanearCadastroBtn" class="bg-surface2 border border-line rounded-xl px-3 text-sm">📷</button>
+        </div>
+      </div>
+    </div>
+
+    <button id="detectarIaBtn" class="bg-surface2 border border-accent text-accent rounded-xl py-2.5 text-xs font-semibold" style="display:none;">✨ Ler rótulo com IA (local, sem internet depois)</button>
+    <div id="iaCadastroStatus" class="text-[11px] text-muted" style="display:none;"></div>
+    <div class="h-1.5 bg-surface2 rounded-full overflow-hidden" id="iaVisaoProgressWrap" style="display:none;"><div id="iaVisaoProgressBar" class="h-full bg-accent" style="width:0%"></div></div>
+
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="text-[11px] text-muted block mb-1">Quantidade</label>
+        <input id="campoQtd" type="number" min="0" placeholder="0" class="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none">
+      </div>
+      <div>
+        <label class="text-[11px] text-muted block mb-1">Validade</label>
+        <input id="campoValidade" type="date" class="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none">
+      </div>
+      <div>
+        <label class="text-[11px] text-muted block mb-1">Preço de custo (R$)</label>
+        <input id="campoCusto" type="number" min="0" step="0.01" placeholder="0,00" class="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none">
+      </div>
+      <div>
+        <label class="text-[11px] text-muted block mb-1">Preço de venda (R$)</label>
+        <input id="campoVenda" type="number" min="0" step="0.01" placeholder="0,00" class="w-full bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none">
+      </div>
+    </div>
+  </div>
+  <div class="flex-shrink-0 border-t border-line px-4 py-3 safe-bottom flex gap-2">
+    <button id="excluirProdutoBtn" class="bg-red-500/10 border border-red-500/40 text-red-400 rounded-xl px-4 py-3 text-sm font-semibold" style="display:none; color:var(--red); border-color:rgba(229,103,91,.4); background:rgba(229,103,91,.1);">Excluir</button>
+    <button id="salvarProdutoBtn" class="bg-accent flex-1 text-white rounded-xl py-3 text-sm font-semibold">Salvar produto</button>
+  </div>
+</div>
+
+<!-- ============ MODAL: SCANNER (câmera) ============ -->
+<div class="modal-backdrop" id="backdropScanner"></div>
+<div class="modal-sheet" id="modalScanner" style="max-height:80vh;">
+  <div class="flex items-center justify-between px-4 py-3 border-b border-line flex-shrink-0">
+    <span class="font-display font-semibold text-base">Aponte para o código de barras</span>
+    <button id="fecharScanner" class="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center">✕</button>
+  </div>
+  <div class="p-4">
+    <div id="qrReader"></div>
+    <p class="text-[11px] text-muted mt-2 text-center">Se pedir permissão de câmera, toque em "Permitir".</p>
+  </div>
+</div>
+
+<!-- ============ MODAL: TEMA ============ -->
+<div class="modal-backdrop" id="backdropTema"></div>
+<div class="modal-sheet" id="modalTema">
+  <div class="flex items-center justify-between px-4 py-3 border-b border-line flex-shrink-0">
+    <span class="font-display font-semibold text-base">Cor do app</span>
+    <button id="fecharTema" class="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center">✕</button>
+  </div>
+  <div class="px-4 py-4 flex flex-col gap-4 safe-bottom">
+    <div class="flex flex-wrap gap-3" id="paletaCores"></div>
+    <div>
+      <label class="text-[11px] text-muted block mb-1.5">Cor personalizada</label>
+      <input type="color" id="corCustom" value="#4C8DFF" class="w-full h-11 rounded-xl bg-surface2 border border-line">
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ============================================================= -->
+<!-- LIBS: leitor de código de barras + motor de IA local (WASM)   -->
+<!-- ============================================================= -->
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+<script type="module">
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3";
+env.allowLocalModels = false;
+
+/* ==================================================================
+   ESTADO GLOBAL
+   ================================================================== */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+
+const state = {
+  produtos: [],        // array de produtos salvos
+  carrinho: [],         // itens da venda atual: {produtoId, qtd}
+  editandoId: null,     // id do produto em edição (null = novo)
+  scannerAlvo: null,     // 'cadastro' | 'caixa'
+  html5Qr: null,
+  iaPipeline: null,
+  iaVisaoPipeline: null,
+  iaCarregando: false,
+};
+
+const LS_PRODUTOS = "jl_produtos";
+const LS_TEMA = "jl_tema";
+
+/* ==================================================================
+   PERSISTÊNCIA (localStorage)
+   ================================================================== */
+function carregarProdutos() {
+  try { state.produtos = JSON.parse(localStorage.getItem(LS_PRODUTOS)) || []; }
+  catch (e) { state.produtos = []; }
+}
+function salvarProdutos() {
+  try { localStorage.setItem(LS_PRODUTOS, JSON.stringify(state.produtos)); }
+  catch (e) { toast("Armazenamento cheio — remova fotos grandes ou produtos antigos"); }
+}
+function gerarId() { return "p_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7); }
+
+/* ==================================================================
+   TOAST
+   ================================================================== */
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* ==================================================================
+   NAVEGAÇÃO ENTRE ABAS
+   ================================================================== */
+function irPara(nome) {
+  $$(".screen").forEach(s => s.classList.remove("active"));
+  $("#screen-" + nome).classList.add("active");
+  $$(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.screen === nome));
+  if (nome === "estoque") renderEstoque();
+  if (nome === "caixa") renderCarrinho();
+}
+$$(".tab-btn").forEach(b => b.onclick = () => irPara(b.dataset.screen));
+
+/* ==================================================================
+   TEMA / COR DO APP
+   ================================================================== */
+const TEMAS = [
+  { nome: "Azul (neutro)",   cor: "#4C8DFF" },
+  { nome: "Rosa",            cor: "#FF6FA5" },
+  { nome: "Roxo",            cor: "#8C7CFF" },
+  { nome: "Verde",           cor: "#3FBF7F" },
+  { nome: "Laranja",         cor: "#F2A65A" },
+  { nome: "Vermelho",        cor: "#E5675B" },
+  { nome: "Vibrante (multicor)", cor: "multicolor" },
+];
+function aplicarTema(cor) {
+  if (cor === "multicolor") {
+    // usa uma cor sólida de referência pros elementos funcionais e ativa o gradiente nos botões marcados
+    document.documentElement.style.setProperty("--accent", "#8C7CFF");
+    document.body.classList.add("tema-multicolor");
+    $$(".bg-accent").forEach(el => el.classList.add("accent-multicolor"));
+  } else {
+    document.body.classList.remove("tema-multicolor");
+    $$(".accent-multicolor").forEach(el => el.classList.remove("accent-multicolor"));
+    document.documentElement.style.setProperty("--accent", cor);
+    // deriva um tom mais escuro pro --accent-dim
+    document.documentElement.style.setProperty("--accent-dim", sombrear(cor, 0.35));
+  }
+  localStorage.setItem(LS_TEMA, cor);
+  document.querySelector('meta[name="theme-color"]').setAttribute("content", "#0D0F14");
+}
+function sombrear(hex, fator) {
+  const n = parseInt(hex.replace("#", ""), 16);
+  const r = Math.round(((n >> 16) & 255) * fator);
+  const g = Math.round(((n >> 8) & 255) * fator);
+  const b = Math.round((n & 255) * fator);
+  return `rgb(${r},${g},${b})`;
+}
+function renderPaletaCores() {
+  const wrap = $("#paletaCores");
+  wrap.innerHTML = "";
+  const atual = localStorage.getItem(LS_TEMA) || "#4C8DFF";
+  TEMAS.forEach(t => {
+    const el = document.createElement("button");
+    el.className = "swatch" + (atual === t.cor ? " selected" : "");
+    el.style.background = t.cor === "multicolor"
+      ? "linear-gradient(135deg,#4C8DFF,#8C7CFF,#F2A65A,#E5675B)"
+      : t.cor;
+    el.title = t.nome;
+    el.onclick = () => { aplicarTema(t.cor); renderPaletaCores(); };
+    wrap.appendChild(el);
+  });
+}
+$("#corCustom").oninput = (e) => { aplicarTema(e.target.value); renderPaletaCores(); };
+$("#themeBtn").onclick = () => abrirModal("Tema");
+$("#fecharTema").onclick = () => fecharModal("Tema");
+$("#backdropTema").onclick = () => fecharModal("Tema");
+
+/* ==================================================================
+   MODAIS GENÉRICOS
+   ================================================================== */
+function abrirModal(nome) {
+  $("#backdrop" + nome).classList.add("show");
+  $("#modal" + nome).classList.add("show");
+}
+function fecharModal(nome) {
+  $("#backdrop" + nome).classList.remove("show");
+  $("#modal" + nome).classList.remove("show");
+  if (nome === "Scanner") pararScanner();
+}
+
+/* ==================================================================
+   SEMÁFORO DE VALIDADE
+   ================================================================== */
+function statusValidade(validadeStr) {
+  if (!validadeStr) return "ok";
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const val = new Date(validadeStr + "T00:00:00");
+  const dias = Math.floor((val - hoje) / 86400000);
+  if (dias < 0) return "vencido";
+  if (dias <= 30) return "aviso";
+  return "ok";
+}
+
+/* ==================================================================
+   PROCESSAMENTO DE IMAGEM (redimensiona pra 400x400 JPEG antes de salvar)
+   ================================================================== */
+function redimensionarImagem(file, maxSize = 400, qualidade = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } }
+        else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", qualidade));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ==================================================================
+   IA DE VISÃO LOCAL (roda 100% no celular, via WASM — sem chave de API,
+   sem servidor de terceiro, sem custo. Baixa o modelo uma única vez e
+   o navegador guarda em cache; das próximas vezes carrega na hora,
+   inclusive sem internet.)
+   ------------------------------------------------------------------
+   Usamos um modelo pequeno de "visão + texto" (SmolVLM-256M-Instruct).
+   Ele olha a foto do rótulo e escreve o nome/marca do produto, do
+   mesmo jeito que um humano leria a embalagem.
+   ================================================================== */
+const VISION_MODEL_ID = "onnx-community/SmolVLM-256M-Instruct";
+
+async function garantirIaVisao() {
+  if (state.iaVisaoPipeline) return state.iaVisaoPipeline;
+  const status = $("#iaCadastroStatus");
+  const wrap = $("#iaVisaoProgressWrap");
+  const bar = $("#iaVisaoProgressBar");
+  wrap.style.display = "block";
+  status.textContent = "Baixando IA de visão (só na primeira vez, ~300 MB)…";
+  state.iaVisaoPipeline = await pipeline("image-text-to-text", VISION_MODEL_ID, {
+    dtype: "q4",
+    device: "wasm",
+    progress_callback: (p) => {
+      if (p.status === "progress") {
+        const pct = p.total ? Math.round((p.loaded / p.total) * 100) : 0;
+        bar.style.width = pct + "%";
+        status.textContent = "Baixando IA de visão… " + pct + "%";
+      }
+    }
+  });
+  wrap.style.display = "none";
+  return state.iaVisaoPipeline;
+}
+
+/* window.processarImagemComIA(imagemBase64) — ponto de extensão.
+   Por padrão já usa a IA de visão local acima. Se um dia você quiser
+   plugar outro "robô" (o do seu outro projeto, por exemplo), é só
+   sobrescrever esta função de fora do iframe antes de abrir o app —
+   ela continua funcionando exatamente do mesmo jeito pro resto do app. */
+window.processarImagemComIA = async function (imagemBase64) {
+  const visao = await garantirIaVisao();
+  const mensagens = [
+    {
+      role: "user",
+      content: [
+        { type: "image", image: imagemBase64 },
+        { type: "text", text: "Olhe essa foto de um produto de mercado. Responda só com o nome do produto e a marca, bem curto, sem explicação nenhuma, sem pontuação extra." }
+      ]
+    }
+  ];
+  const out = await visao(mensagens, { max_new_tokens: 40, do_sample: false });
+  let texto = out[0].generated_text;
+  if (Array.isArray(texto)) texto = texto[texto.length - 1].content;
+  texto = String(texto).trim();
+  if (!texto) return null;
+  return { nome: texto };
+};
+
+async function detectarProdutoPelaFoto() {
+  const status = $("#iaCadastroStatus");
+  status.style.display = "block";
+  status.textContent = "Analisando a foto…";
+  $("#detectarIaBtn").disabled = true;
+  const foto = $("#fotoPreview").src;
+  const codigo = $("#campoCodigo").value.trim();
+
+  // 1) IA de visão local (roda no celular, sem internet depois de baixada)
+  try {
+    const resultado = await window.processarImagemComIA(foto);
+    if (resultado && resultado.nome) {
+      $("#campoNome").value = resultado.nome;
+      status.textContent = "Preenchido pela IA de visão ✓";
+      $("#detectarIaBtn").disabled = false;
+      return;
+    }
+  } catch (e) {
+    console.error(e);
+    status.textContent = "IA de visão não conseguiu ler agora, tentando pelo código de barras…";
+  }
+
+  // 2) fallback: busca pelo código de barras na Open Food Facts (base pública gratuita)
+  if (codigo) {
+    try {
+      status.textContent = "Buscando pelo código de barras…";
+      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(codigo)}.json`);
+      const data = await res.json();
+      if (data && data.product && (data.product.product_name || data.product.product_name_pt)) {
+        $("#campoNome").value = data.product.product_name_pt || data.product.product_name;
+        status.textContent = "Produto encontrado pelo código de barras ✓";
+        $("#detectarIaBtn").disabled = false;
+        return;
+      }
+    } catch (e) { /* sem internet ou não encontrado */ }
+  }
+  status.textContent = "Não consegui identificar automaticamente — preencha manualmente.";
+  $("#detectarIaBtn").disabled = false;
+}
+$("#detectarIaBtn").onclick = detectarProdutoPelaFoto;
+
+/* ==================================================================
+   FORMULÁRIO DE PRODUTO
+   ================================================================== */
+$("#novoProdutoBtn").onclick = () => abrirFormProduto(null);
+
+function abrirFormProduto(produto) {
+  state.editandoId = produto ? produto.id : null;
+  $("#modalProdutoTitulo").textContent = produto ? "Editar produto" : "Novo produto";
+  $("#campoNome").value = produto ? produto.nome : "";
+  $("#campoCodigo").value = produto ? produto.codigoBarras : "";
+  $("#campoQtd").value = produto ? produto.quantidade : "";
+  $("#campoValidade").value = produto ? produto.validade : "";
+  $("#campoCusto").value = produto ? produto.precoCusto : "";
+  $("#campoVenda").value = produto ? produto.precoVenda : "";
+  $("#fotoPreview").src = produto && produto.foto ? produto.foto
+    : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231D222C'/></svg>";
+  $("#detectarIaBtn").style.display = "block";
+  $("#iaCadastroStatus").style.display = "none";
+  $("#excluirProdutoBtn").style.display = produto ? "block" : "none";
+  abrirModal("Produto");
+}
+$("#fecharModalProduto").onclick = () => fecharModal("Produto");
+$("#backdropProduto").onclick = () => fecharModal("Produto");
+
+$("#fotoInput").onchange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const base64 = await redimensionarImagem(file, 400, 0.72);
+    $("#fotoPreview").src = base64;
+  } catch (err) { toast("Não consegui processar essa imagem"); }
+};
+
+$("#salvarProdutoBtn").onclick = () => {
+  const nome = $("#campoNome").value.trim();
+  if (!nome) { toast("Digite o nome do produto"); return; }
+  const dados = {
+    id: state.editandoId || gerarId(),
+    nome,
+    codigoBarras: $("#campoCodigo").value.trim(),
+    foto: $("#fotoPreview").src.startsWith("data:image/jpeg") || $("#fotoPreview").src.startsWith("data:image/png") ? $("#fotoPreview").src : "",
+    quantidade: parseInt($("#campoQtd").value) || 0,
+    validade: $("#campoValidade").value || "",
+    precoCusto: parseFloat($("#campoCusto").value) || 0,
+    precoVenda: parseFloat($("#campoVenda").value) || 0,
+  };
+  const idx = state.produtos.findIndex(p => p.id === dados.id);
+  if (idx >= 0) state.produtos[idx] = dados; else state.produtos.push(dados);
+  salvarProdutos();
+  fecharModal("Produto");
+  renderEstoque();
+  toast("Produto salvo");
+};
+
+$("#excluirProdutoBtn").onclick = () => {
+  if (!state.editandoId) return;
+  if (!confirm("Remover este produto do estoque?")) return;
+  state.produtos = state.produtos.filter(p => p.id !== state.editandoId);
+  salvarProdutos();
+  fecharModal("Produto");
+  renderEstoque();
+  toast("Produto removido");
+};
+
+/* ==================================================================
+   LISTA DE ESTOQUE
+   ================================================================== */
+function iconeSemaforo(st) {
+  return `<span class="semaforo ${st === 'vencido' ? 'vencido' : st === 'aviso' ? 'aviso' : 'ok'}"></span>`;
+}
+function renderEstoque() {
+  const termo = $("#buscaInput").value.trim().toLowerCase();
+  const lista = $("#listaProdutos");
+  const produtos = state.produtos
+    .filter(p => !termo || p.nome.toLowerCase().includes(termo) || (p.codigoBarras || "").includes(termo))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+
+  if (!produtos.length) {
+    lista.innerHTML = `<div class="text-center text-muted text-xs mt-16 px-6">
+      ${state.produtos.length ? "Nenhum produto encontrado pra essa busca." : "Nenhum produto cadastrado ainda.<br>Toque no + pra adicionar o primeiro."}
+    </div>`;
+    return;
+  }
+
+  lista.innerHTML = "";
+  produtos.forEach(p => {
+    const st = statusValidade(p.validade);
+    const el = document.createElement("div");
+    el.className = "bg-surface border border-line rounded-2xl p-3 flex items-center gap-3";
+    el.innerHTML = `
+      <img src="${p.foto || "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%231D222C'/></svg>"}" class="w-14 h-14 rounded-xl object-cover flex-shrink-0 border border-line">
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          ${iconeSemaforo(st)}
+          <span class="text-sm font-medium truncate">${escapeHtml(p.nome)}</span>
+        </div>
+        <div class="text-[11px] text-muted mt-0.5 mono truncate">${p.codigoBarras || "sem código"}</div>
+        <div class="text-[11px] text-muted mt-0.5">Qtd: <b class="text-text">${p.quantidade}</b> · Venda: <b class="text-text">R$ ${p.precoVenda.toFixed(2)}</b>${p.validade ? " · Val: " + formatarData(p.validade) : ""}</div>
+      </div>`;
+    el.onclick = () => abrirFormProduto(p);
+    lista.appendChild(el);
+  });
+}
+function formatarData(iso) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
+function escapeHtml(s) {
+  const d = document.createElement("div"); d.textContent = s; return d.innerHTML;
+}
+$("#buscaInput").oninput = renderEstoque;
+
+/* ==================================================================
+   SCANNER DE CÓDIGO DE BARRAS (html5-qrcode)
+   ================================================================== */
+function abrirScanner(alvo) {
+  state.scannerAlvo = alvo;
+  abrirModal("Scanner");
+  setTimeout(() => {
+    state.html5Qr = new Html5Qrcode("qrReader");
+    Html5Qrcode.getCameras().then(() => {
+      state.html5Qr.start(
+        { facingMode: "environment" },
+        { fps: 12, qrbox: { width: 260, height: 140 }, formatsToSupport: [
+            Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+            Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
+            Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.QR_CODE
+          ] },
+        (texto) => onCodigoLido(texto),
+        () => {}
+      ).catch(() => toast("Não consegui acessar a câmera"));
+    }).catch(() => toast("Permita o acesso à câmera pra escanear"));
+  }, 150);
+}
+function pararScanner() {
+  if (state.html5Qr) {
+    state.html5Qr.stop().then(() => state.html5Qr.clear()).catch(() => {});
+    state.html5Qr = null;
+  }
+}
+function onCodigoLido(texto) {
+  if (state.scannerAlvo === "cadastro") {
+    $("#campoCodigo").value = texto;
+    fecharModal("Scanner");
+    toast("Código capturado");
+  } else if (state.scannerAlvo === "caixa") {
+    fecharModal("Scanner");
+    adicionarAoCarrinhoPorCodigo(texto);
+  }
+}
+$("#escanearCadastroBtn").onclick = () => abrirScanner("cadastro");
+$("#escanearCaixaBtn").onclick = () => abrirScanner("caixa");
+$("#fecharScanner").onclick = () => fecharModal("Scanner");
+$("#backdropScanner").onclick = () => fecharModal("Scanner");
+
+/* ==================================================================
+   CAIXA / VENDA
+   ================================================================== */
+$("#buscaManualBtn").onclick = () => {
+  const termo = prompt("Digite o nome ou código do produto:");
+  if (!termo) return;
+  const t = termo.trim().toLowerCase();
+  const p = state.produtos.find(x => x.codigoBarras === termo.trim() || x.nome.toLowerCase().includes(t));
+  if (p) adicionarAoCarrinho(p.id); else toast("Produto não encontrado");
+};
+
+function adicionarAoCarrinhoPorCodigo(codigo) {
+  const p = state.produtos.find(x => x.codigoBarras === codigo);
+  if (!p) { toast("Nenhum produto com esse código. Cadastre em Estoque."); return; }
+  adicionarAoCarrinho(p.id);
+}
+function adicionarAoCarrinho(produtoId) {
+  const item = state.carrinho.find(i => i.produtoId === produtoId);
+  const produto = state.produtos.find(p => p.id === produtoId);
+  if (!produto) return;
+  const jaNoCarrinho = item ? item.qtd : 0;
+  if (jaNoCarrinho + 1 > produto.quantidade) { toast("Estoque insuficiente"); return; }
+  if (item) item.qtd += 1; else state.carrinho.push({ produtoId, qtd: 1 });
+  renderCarrinho();
+  irPara("caixa");
+}
+function renderCarrinho() {
+  const lista = $("#carrinhoLista");
+  if (!state.carrinho.length) {
+    lista.innerHTML = `<div class="text-center text-muted text-xs mt-16 px-6">Carrinho vazio.<br>Escaneie um produto pra começar a venda.</div>`;
+    $("#totalVenda").textContent = "R$ 0,00";
+    $("#finalizarVendaBtn").disabled = true;
+    return;
+  }
+  lista.innerHTML = "";
+  let total = 0;
+  state.carrinho.forEach(item => {
+    const p = state.produtos.find(x => x.id === item.produtoId);
+    if (!p) return;
+    const subtotal = p.precoVenda * item.qtd;
+    total += subtotal;
+    const el = document.createElement("div");
+    el.className = "bg-surface border border-line rounded-2xl p-3 flex items-center gap-3";
+    el.innerHTML = `
+      <div class="flex-1 min-w-0">
+        <div class="text-sm font-medium truncate">${escapeHtml(p.nome)}</div>
+        <div class="text-[11px] text-muted">R$ ${p.precoVenda.toFixed(2)} un.</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button class="w-7 h-7 rounded-full bg-surface2 border border-line" data-menos="${p.id}">–</button>
+        <span class="text-sm w-5 text-center">${item.qtd}</span>
+        <button class="w-7 h-7 rounded-full bg-surface2 border border-line" data-mais="${p.id}">+</button>
+      </div>
+      <div class="text-sm font-semibold w-16 text-right">R$ ${subtotal.toFixed(2)}</div>`;
+    lista.appendChild(el);
+  });
+  lista.querySelectorAll("[data-mais]").forEach(b => b.onclick = () => alterarQtdCarrinho(b.dataset.mais, 1));
+  lista.querySelectorAll("[data-menos]").forEach(b => b.onclick = () => alterarQtdCarrinho(b.dataset.menos, -1));
+  $("#totalVenda").textContent = "R$ " + total.toFixed(2);
+  $("#finalizarVendaBtn").disabled = false;
+}
+function alterarQtdCarrinho(produtoId, delta) {
+  const item = state.carrinho.find(i => i.produtoId === produtoId);
+  const produto = state.produtos.find(p => p.id === produtoId);
+  if (!item || !produto) return;
+  const nova = item.qtd + delta;
+  if (nova <= 0) { state.carrinho = state.carrinho.filter(i => i.produtoId !== produtoId); }
+  else if (nova > produto.quantidade) { toast("Estoque insuficiente"); return; }
+  else { item.qtd = nova; }
+  renderCarrinho();
+}
+$("#finalizarVendaBtn").onclick = () => {
+  if (!state.carrinho.length) return;
+  state.carrinho.forEach(item => {
+    const p = state.produtos.find(x => x.id === item.produtoId);
+    if (p) p.quantidade = Math.max(0, p.quantidade - item.qtd);
+  });
+  salvarProdutos();
+  state.carrinho = [];
+  renderCarrinho();
+  renderEstoque();
+  toast("Venda finalizada — estoque atualizado");
+};
+
+/* ==================================================================
+   CONSULTOR IA (modelo local via transformers.js — carrega uma vez, cache no navegador)
+   ================================================================== */
+function adicionarChat(texto, autor) {
+  const lista = $("#chatLista");
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble " + (autor === "user" ? "user" : "ai");
+  bubble.textContent = texto;
+  lista.appendChild(bubble);
+  lista.scrollTop = lista.scrollHeight;
+  return bubble;
+}
+
+$("#carregarIaBtn").onclick = async () => {
+  if (state.iaCarregando) return;
+  const modelId = $("#modelSelect").value;
+  state.iaCarregando = true;
+  $("#carregarIaBtn").disabled = true;
+  $("#iaDot").style.background = "var(--amber)";
+  $("#iaStatus").textContent = "Carregando modelo (só na primeira vez)…";
+  $("#iaProgressWrap").style.display = "block";
+  try {
+    state.iaPipeline = await pipeline("text-generation", modelId, {
+      dtype: "q4",
+      device: "wasm",
+      progress_callback: (p) => {
+        if (p.status === "progress") {
+          const pct = p.total ? Math.round((p.loaded / p.total) * 100) : 0;
+          $("#iaProgressBar").style.width = pct + "%";
+          $("#iaProgressLabel").textContent = (p.file || "") + " · " + pct + "%";
+        }
+      }
+    });
+    $("#iaDot").style.background = "var(--green)";
+    $("#iaStatus").textContent = "IA pronta e funcionando offline";
+    toast("IA carregada — não precisa baixar de novo");
+    if (!$("#chatLista").children.length) {
+      adicionarChat("Oi! Já posso olhar seu estoque e te ajudar a decidir o que comprar, o que tá acabando ou vencendo. Toque em 'Sugestão de compra' ou me pergunte algo.", "ai");
+    }
+  } catch (err) {
+    console.error(err);
+    $("#iaDot").style.background = "var(--red)";
+    $("#iaStatus").textContent = "Falhou ao carregar — tente o modelo mais leve";
+    toast("Não consegui carregar a IA agora");
+  } finally {
+    state.iaCarregando = false;
+    $("#carregarIaBtn").disabled = false;
+    setTimeout(() => $("#iaProgressWrap").style.display = "none", 600);
+  }
+};
+
+/* Monta o contexto do estoque atual pra enviar pro modelo (hook pedido: generateAIPrompt) */
+window.generateAIPrompt = function (contextoExtra) {
+  const hoje = new Date();
+  const linhas = state.produtos.map(p => {
+    const st = statusValidade(p.validade);
+    return `- ${p.nome} | qtd: ${p.quantidade} | validade: ${p.validade || "sem data"} (${st}) | custo: R$${p.precoCusto.toFixed(2)} | venda: R$${p.precoVenda.toFixed(2)}`;
+  }).join("\n") || "(estoque vazio)";
+  return `Você é um consultor de compras para um pequeno mercadinho chamado JL. Estoque atual:\n${linhas}\n\n${contextoExtra || ""}`;
+};
+
+async function perguntarIA(perguntaUsuario) {
+  if (!state.iaPipeline) { toast("Carregue a IA primeiro"); return; }
+  adicionarChat(perguntaUsuario, "user");
+  const bubble = adicionarChat("Pensando…", "ai");
+  const contexto = window.generateAIPrompt(
+    "Responda em português, de forma direta e curta, focando em quantidades baixas (menos de 5 unidades) e produtos vencidos ou perto de vencer."
+  );
+  const mensagens = [
+    { role: "system", content: contexto },
+    { role: "user", content: perguntaUsuario }
+  ];
+  try {
+    const out = await state.iaPipeline(mensagens, { max_new_tokens: 300, temperature: 0.4, do_sample: false });
+    let texto = out[0].generated_text;
+    if (Array.isArray(texto)) texto = texto[texto.length - 1].content;
+    bubble.textContent = String(texto).trim();
+  } catch (err) {
+    console.error(err);
+    bubble.textContent = "Não consegui responder agora. Tente de novo.";
+  }
+  $("#chatLista").scrollTop = $("#chatLista").scrollHeight;
+}
+$("#chatEnviarBtn").onclick = () => {
+  const val = $("#chatInput").value.trim();
+  if (!val) return;
+  $("#chatInput").value = "";
+  perguntarIA(val);
+};
+$("#chatInput").onkeydown = (e) => { if (e.key === "Enter") $("#chatEnviarBtn").click(); };
+$("#sugestaoAutoBtn").onclick = () => perguntarIA("O que eu deveria comprar essa semana, olhando meu estoque atual?");
+
+/* ==================================================================
+   PWA: manifest embutido (permite instalar na tela inicial em modo standalone)
+   ================================================================== */
+(function gerarManifest() {
+  const manifest = {
+    name: "JL — Gestão de Mercadinho",
+    short_name: "JL Mercadinho",
+    start_url: "./",
+    display: "standalone",
+    background_color: "#0D0F14",
+    theme_color: "#0D0F14",
+    orientation: "portrait",
+    icons: [
+      { src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234C8DFF' width='100' height='100' rx='22'/><text x='50' y='68' font-size='46' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>JL</text></svg>", sizes: "192x192", type: "image/svg+xml" }
+    ]
+  };
+  const blob = new Blob([JSON.stringify(manifest)], { type: "application/json" });
+  $("#manifestLink").setAttribute("href", URL.createObjectURL(blob));
+})();
+
+/* ==================================================================
+   BOOT
+   ================================================================== */
+function boot() {
+  carregarProdutos();
+  const temaSalvo = localStorage.getItem(LS_TEMA) || "#4C8DFF";
+  aplicarTema(temaSalvo);
+  renderPaletaCores();
+  renderEstoque();
+  renderCarrinho();
+}
+boot();
+</script>
+</body>
+</html>
