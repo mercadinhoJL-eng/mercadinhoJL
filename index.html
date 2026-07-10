@@ -11,8 +11,8 @@
   <title>JL — Gestão de Mercadinho</title>
 
   <!-- Ícone do app (SVG embutido) -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234C8DFF' width='100' height='100' rx='22'/><text x='50' y='68' font-size='46' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>JL</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%234C8DFF' width='100' height='100' rx='22'/><text x='50' y='68' font-size='46' font-family='Arial' font-weight='700' fill='white' text-anchor='middle'>JL</text></svg>">
+  <link rel="icon" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
 
   <!-- Manifest PWA separado (permite "Adicionar à Tela Inicial" corretamente) -->
   <link rel="manifest" href="manifest.json">
@@ -89,6 +89,9 @@
     input[type="date"]::-webkit-calendar-picker-indicator{ filter:invert(1); opacity:.6; }
     .swatch{ width:34px; height:34px; border-radius:50%; border:2px solid transparent; flex-shrink:0; }
     .swatch.selected{ border-color:#fff; }
+    /* corrige o corte de botões: itens flexíveis com texto/select não encolhiam e empurravam os botões pra fora da tela */
+    #modelSelect, #chatInput{ min-width:0; }
+    .flex-1{ min-width:0; }
   </style>
 </head>
 
@@ -137,9 +140,9 @@
       <section class="screen" id="screen-ia">
         <div class="px-4 pt-3 pb-2 flex-shrink-0 flex items-center gap-2">
           <select id="modelSelect" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-xs outline-none">
-            <option value="onnx-community/Qwen2.5-1.5B-Instruct">Qwen2.5 1.5B — recomendado (equilíbrio)</option>
-            <option value="onnx-community/Qwen2.5-0.5B-Instruct">Qwen2.5 0.5B — mais leve e rápido</option>
-            <option value="onnx-community/Llama-3.2-1B-Instruct">Llama 3.2 1B — alternativa</option>
+            <option value="onnx-community/Qwen2.5-0.5B-Instruct" selected>Qwen2.5 0.5B — recomendado pra esse celular</option>
+            <option value="onnx-community/Llama-3.2-1B-Instruct">Llama 3.2 1B — pode ser lento</option>
+            <option value="onnx-community/Qwen2.5-1.5B-Instruct">Qwen2.5 1.5B — pode não carregar (pouca memória)</option>
           </select>
           <button id="carregarIaBtn" class="bg-accent text-white rounded-xl px-3 py-2.5 text-xs font-semibold whitespace-nowrap">Carregar IA</button>
         </div>
@@ -158,8 +161,10 @@
 
         <div class="flex-shrink-0 bg-surface border-t border-line px-3 pt-2.5 pb-2.5 safe-bottom flex gap-2">
           <button id="sugestaoAutoBtn" class="bg-surface2 border border-line rounded-xl px-3 text-xs whitespace-nowrap">💡 Sugestão de compra</button>
-          <input id="chatInput" placeholder="Pergunte sobre seu estoque…" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none" />
-          <button id="chatEnviarBtn" class="bg-accent text-white rounded-xl px-4 text-sm font-semibold">➤</button>
+          <form id="chatForm" style="display:contents">
+            <input id="chatInput" enterkeyhint="send" placeholder="Pergunte sobre seu estoque…" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-sm outline-none" />
+            <button id="chatEnviarBtn" type="submit" class="bg-accent text-white rounded-xl px-4 text-sm font-semibold">➤</button>
+          </form>
         </div>
       </section>
     </div>
@@ -768,8 +773,13 @@
       }catch(err){ console.error(err); bubble.textContent = "Não consegui responder agora. Tente de novo."; }
       $("#chatLista").scrollTop = $("#chatLista").scrollHeight;
     }
-    $("#chatEnviarBtn").onclick = () => { const val=$("#chatInput").value.trim(); if(!val) return; $("#chatInput").value=""; perguntarIA(val); };
-    $("#chatInput").onkeydown = e => { if(e.key==="Enter") $("#chatEnviarBtn").click(); };
+    $("#chatForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = $("#chatInput").value.trim();
+      if (!val) return;
+      $("#chatInput").value = "";
+      perguntarIA(val);
+    });
     $("#sugestaoAutoBtn").onclick = () => perguntarIA("O que eu deveria comprar essa semana, olhando meu estoque atual?");
 
     /* ================================================================== REGISTRO DO SERVICE WORKER ================================================================== */
