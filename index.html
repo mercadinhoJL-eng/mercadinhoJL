@@ -140,9 +140,10 @@
       <section class="screen" id="screen-ia">
         <div class="px-4 pt-3 pb-2 flex-shrink-0 flex items-center gap-2">
           <select id="modelSelect" class="flex-1 bg-surface2 border border-line rounded-xl px-3 py-2.5 text-xs outline-none">
-            <option value="onnx-community/Qwen2.5-0.5B-Instruct" selected>Qwen2.5 0.5B — recomendado pra esse celular</option>
-            <option value="onnx-community/Llama-3.2-1B-Instruct">Llama 3.2 1B — pode ser lento</option>
-            <option value="onnx-community/Qwen2.5-1.5B-Instruct">Qwen2.5 1.5B — pode não carregar (pouca memória)</option>
+            <option value="busca-leve" selected>Busca leve — funciona em qualquer celular</option>
+            <option value="onnx-community/Qwen2.5-0.5B-Instruct">Qwen2.5 0.5B — conversa completa</option>
+            <option value="onnx-community/Llama-3.2-1B-Instruct">Llama 3.2 1B — conversa (pode ser lento)</option>
+            <option value="onnx-community/Qwen2.5-1.5B-Instruct">Qwen2.5 1.5B — conversa (exige mais memória)</option>
           </select>
           <button id="carregarIaBtn" class="bg-accent text-white rounded-xl px-3 py-2.5 text-xs font-semibold whitespace-nowrap">Carregar IA</button>
         </div>
@@ -268,6 +269,7 @@
   <script type="module">
     import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3";
     env.allowLocalModels = false;
+    env.backends.onnx.wasm.numThreads = 1; // evita travar processadores fracos (ex: Helio A22)
 
     /* ================================================================== ESTADO GLOBAL ================================================================== */
     const $ = (s) => document.querySelector(s);
@@ -279,6 +281,9 @@
       scannerAlvo: null,
       html5Qr: null,
       iaPipeline: null,
+      iaEmbedPipeline: null,
+      iaModoAtual: null, // "conversa" | "busca-leve"
+      produtoEmbeddings: {},
       iaCarregando: false,
     };
     const LS_PRODUTOS = "jl_produtos";
@@ -546,6 +551,7 @@
       };
       const idx = state.produtos.findIndex(p => p.id === dados.id);
       if (idx >= 0) state.produtos[idx] = dados; else state.produtos.push(dados);
+      delete state.produtoEmbeddings[dados.id]; // força recalcular na próxima busca leve
       salvarProdutos();
       fecharModal("Produto");
       renderEstoque();
@@ -556,6 +562,7 @@
       if (!state.editandoId) return;
       if (!confirm("Remover este produto do estoque?")) return;
       state.produtos = state.produtos.filter(p => p.id !== state.editandoId);
+      delete state.produtoEmbeddings[state.editandoId];
       salvarProdutos();
       fecharModal("Produto");
       renderEstoque();
@@ -714,7 +721,7 @@
       toast("Venda finalizada — estoque e total atualizados");
     };
 
-    /* ================================================================== CONSULTOR IA (Text-Generation local) ================================================================== */
+    /* ================================================================== CONSULTOR IA — dois modos: "Busca leve" (embeddings, roda em qualquer celular) e "Conversa" (Qwen/Llama, precisa de mais memória) ================================================================== */
     function adicionarChat(texto, autor) {
       const lista = $("#chatLista");
       const bubble = document.createElement("div");
@@ -725,41 +732,123 @@
       return bubble;
     }
 
+    function cosineSimilarity(vecA, vecB) {
+      let dot = 0, normA = 0, normB = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+      }
+      if (!normA || !normB) return 0;
+      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    // calcula (e guarda em cache) o vetor de cada produto — só recalcula o que mudou
+    async function atualizarEmbeddingsProdutos() {
+      if (!state.iaEmbedPipeline) return;
+      for (const p of state.produtos) {
+        if (!state.produtoEmbeddings[p.id]) {
+          const res = await state.iaEmbedPipeline(p.nome, { pooling: "mean", normalize: true });
+          state.produtoEmbeddings[p.id] = Array.from(res.data);
+        }
+      }
+    }
+
     $("#carregarIaBtn").onclick = async () => {
       if (state.iaCarregando) return;
       const modelId = $("#modelSelect").value;
       state.iaCarregando = true;
       $("#carregarIaBtn").disabled = true;
       $("#iaDot").style.background = "var(--amber)";
-      $("#iaStatus").textContent = "Carregando modelo (só na primeira vez)…";
       $("#iaProgressWrap").style.display = "block";
       try {
-        state.iaPipeline = await pipeline("text-generation", modelId, {
-          dtype: "q4", device: "wasm", progress_callback: (p) => {
-            if (p.status === "progress") {
-              const pct = p.total ? Math.round((p.loaded/p.total)*100) : 0;
-              $("#iaProgressBar").style.width = pct + "%";
-              $("#iaProgressLabel").textContent = (p.file || "") + " · " + pct + "%";
+        if (modelId === "busca-leve") {
+          $("#iaStatus").textContent = "Carregando busca leve (só na primeira vez, ~23 MB)…";
+          state.iaEmbedPipeline = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+            quantized: true,
+            progress_callback: (p) => {
+              if (p.status === "progress") {
+                const pct = p.total ? Math.round((p.loaded/p.total)*100) : 0;
+                $("#iaProgressBar").style.width = pct + "%";
+                $("#iaProgressLabel").textContent = (p.file || "") + " · " + pct + "%";
+              }
             }
+          });
+          state.iaModoAtual = "busca-leve";
+          state.iaPipeline = null;
+          await atualizarEmbeddingsProdutos();
+          $("#iaDot").style.background = "var(--green)";
+          $("#iaStatus").textContent = "Busca leve pronta e funcionando offline";
+          toast("Busca leve carregada — não precisa baixar de novo");
+          if (!$("#chatLista").children.length) {
+            adicionarChat("Oi! Digite o nome de um produto ou o que você precisa (ex: 'algo pra limpar a casa') que eu procuro no estoque.", "ai");
           }
-        });
-        $("#iaDot").style.background = "var(--green)";
-        $("#iaStatus").textContent = "IA pronta e funcionando offline";
-        toast("IA carregada — não precisa baixar de novo");
-        if (!$("#chatLista").children.length) {
-          adicionarChat("Oi! Já posso olhar seu estoque e te ajudar a decidir o que comprar, o que tá acabando ou vencendo. Toque em 'Sugestão de compra' ou me pergunte algo.", "ai");
+        } else {
+          $("#iaStatus").textContent = "Carregando modelo (só na primeira vez)…";
+          state.iaPipeline = await pipeline("text-generation", modelId, {
+            dtype: "q4", device: "wasm", progress_callback: (p) => {
+              if (p.status === "progress") {
+                const pct = p.total ? Math.round((p.loaded/p.total)*100) : 0;
+                $("#iaProgressBar").style.width = pct + "%";
+                $("#iaProgressLabel").textContent = (p.file || "") + " · " + pct + "%";
+              }
+            }
+          });
+          state.iaModoAtual = "conversa";
+          state.iaEmbedPipeline = null;
+          $("#iaDot").style.background = "var(--green)";
+          $("#iaStatus").textContent = "IA pronta e funcionando offline";
+          toast("IA carregada — não precisa baixar de novo");
+          if (!$("#chatLista").children.length) {
+            adicionarChat("Oi! Já posso olhar seu estoque e te ajudar a decidir o que comprar, o que tá acabando ou vencendo. Toque em 'Sugestão de compra' ou me pergunte algo.", "ai");
+          }
         }
-      } catch(err){ console.error(err); $("#iaDot").style.background="var(--red)"; $("#iaStatus").textContent="Falhou ao carregar — tente o modelo mais leve"; toast("Não consegui carregar a IA agora"); }
+      } catch(err){
+        console.error(err);
+        $("#iaDot").style.background="var(--red)";
+        $("#iaStatus").textContent="Falhou ao carregar — tente a opção 'Busca leve', que funciona em qualquer celular";
+        toast("Não consegui carregar a IA agora");
+      }
       finally { state.iaCarregando = false; $("#carregarIaBtn").disabled = false; setTimeout(() => $("#iaProgressWrap").style.display = "none", 600); }
     };
 
-    /* hook externo: sobrescreva window.generateAIPrompt se quiser um prompt customizado */
+    /* hook externo: sobrescreva window.generateAIPrompt se quiser um prompt customizado (modo Conversa) */
     window.generateAIPrompt = function(contextoExtra){
       const linhas = state.produtos.map(p=>`- ${p.nome} | qtd:${p.quantidade} | validade:${p.validade||"sem data"} (${statusValidade(p.validade)}) | custo:R$${p.precoCusto.toFixed(2)} | venda:R$${p.precoVenda.toFixed(2)}`).join("\n")||"(estoque vazio)";
       return `Você é um consultor de compras para um pequeno mercadinho chamado JL. Estoque atual:\n${linhas}\n\n${contextoExtra||""}`;
     };
 
+    async function buscarProdutoIA(perguntaUsuario) {
+      if (!state.iaEmbedPipeline) { toast("Carregue a IA primeiro"); return; }
+      adicionarChat(perguntaUsuario, "user");
+      const bubble = adicionarChat("Procurando…", "ai");
+      try {
+        await atualizarEmbeddingsProdutos();
+        const out = await state.iaEmbedPipeline(perguntaUsuario, { pooling: "mean", normalize: true });
+        const queryVec = Array.from(out.data);
+        const resultados = state.produtos
+          .filter(p => state.produtoEmbeddings[p.id])
+          .map(p => ({ produto: p, score: cosineSimilarity(queryVec, state.produtoEmbeddings[p.id]) }))
+          .sort((a, b) => b.score - a.score);
+        const relevantes = resultados.filter(r => r.score > 0.3).slice(0, 5);
+        if (!relevantes.length) {
+          bubble.textContent = "Não encontrei nada parecido no estoque.";
+        } else {
+          let texto = "Encontrei no estoque:\n";
+          relevantes.forEach(r => {
+            texto += `• ${r.produto.nome} — Qtd: ${r.produto.quantidade} — R$ ${r.produto.precoVenda.toFixed(2)}\n`;
+          });
+          bubble.textContent = texto.trim();
+        }
+      } catch (err) {
+        console.error(err);
+        bubble.textContent = "Não consegui buscar agora. Tente de novo.";
+      }
+      $("#chatLista").scrollTop = $("#chatLista").scrollHeight;
+    }
+
     async function perguntarIA(perguntaUsuario){
+      if (state.iaModoAtual === "busca-leve") { return buscarProdutoIA(perguntaUsuario); }
       if(!state.iaPipeline){ toast("Carregue a IA primeiro"); return; }
       adicionarChat(perguntaUsuario, "user");
       const bubble = adicionarChat("Pensando…", "ai");
@@ -780,7 +869,13 @@
       $("#chatInput").value = "";
       perguntarIA(val);
     });
-    $("#sugestaoAutoBtn").onclick = () => perguntarIA("O que eu deveria comprar essa semana, olhando meu estoque atual?");
+    $("#sugestaoAutoBtn").onclick = () => {
+      if (state.iaModoAtual === "busca-leve") {
+        toast("Na Busca leve, digite o nome do produto que você procura");
+        return;
+      }
+      perguntarIA("O que eu deveria comprar essa semana, olhando meu estoque atual?");
+    };
 
     /* ================================================================== REGISTRO DO SERVICE WORKER ================================================================== */
     if ("serviceWorker" in navigator) {
